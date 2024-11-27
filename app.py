@@ -3,7 +3,7 @@ from keras.api.models import Sequential
 from keras.api.layers import Conv2D, MaxPooling2D, Flatten, Dense
 from keras.api.datasets import cifar10
 from keras.api.utils import to_categorical
-from Lib import Sharpening, Upscaling, Print, Time
+from Lib import Sharpening, Upscaling, Print, Time, Filters
 
 # Counts the execution time
 start_time = Time.InitializeTimeCount()
@@ -18,6 +18,10 @@ x_train, x_test = x_train / 255.0, x_test / 255.0
 y_train = to_categorical(y_train, 10)
 y_test = to_categorical(y_test, 10)
 
+# Apply sharpening on the images
+x_train = Filters.ApplyFiltersToImages(x_train)
+x_test = Filters.ApplyFiltersToImages(x_test)
+
 # Create the original model
 model = Sequential([
     Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)),
@@ -31,6 +35,9 @@ model = Sequential([
 
 # Compile the original model
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Save model
+model.save('modelo-default-treinado-com-filtros.h5')
 
 # Train the original model
 model.fit(x_train, y_train, epochs=10, batch_size=64, validation_split=0.2)
