@@ -9,3 +9,12 @@ def ApplySharpening(img):
     sharpened_img = np.clip(sharpened_img, 0, 1)
     sharpened_img = sharpened_img.astype(np.float32)
     return sharpened_img
+
+def ApplySharpeningToImages(images):
+    sharpened_images = []
+    counter = 1
+    for image in images:
+        print("Applying Sharpening to image " + str(counter))
+        counter += 1
+        sharpened_images.append(ApplySharpening(image))
+    return np.array(sharpened_images)

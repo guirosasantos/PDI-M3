@@ -1,8 +1,11 @@
 import numpy as np
 from keras.api.models import Sequential
-from keras.api.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from keras.api.layers import Conv2D, MaxPooling2D, Flatten, Dense, Input, BatchNormalization, Dropout
+import matplotlib.pyplot as plt
 from keras.api.datasets import cifar10
 from keras.api.utils import to_categorical
+from keras.api.models import load_model
+from keras.src.legacy.preprocessing.image import ImageDataGenerator
 from Lib import Sharpening, Upscaling, Print, Time
 
 # Counts the execution time
@@ -18,80 +21,135 @@ x_train, x_test = x_train / 255.0, x_test / 255.0
 y_train = to_categorical(y_train, 10)
 y_test = to_categorical(y_test, 10)
 
+# Apply sharpening on the images
+x_train = Sharpening.ApplySharpeningToImages(x_train)
+x_test = Sharpening.ApplySharpeningToImages(x_test)
+
+shape = x_train.shape[1:]
+
+datagen = ImageDataGenerator(
+    rotation_range=15,
+    horizontal_flip=True,
+    width_shift_range=0.1,
+    height_shift_range=0.1
+)
+datagen.fit(x_train)
+
 # Create the original model
 model = Sequential([
-    Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)),
+    Input(shape=shape),
+    Conv2D(32, (3, 3), activation='relu'),
+    BatchNormalization(),
+    Conv2D(32, (3, 3), activation='relu'),
+    BatchNormalization(),
     MaxPooling2D((2, 2)),
+    Dropout(0.2),
+
     Conv2D(64, (3, 3), activation='relu'),
+    BatchNormalization(),
+    Conv2D(64, (3, 3), activation='relu'),
+    BatchNormalization(),
     MaxPooling2D((2, 2)),
+    Dropout(0.3),
+
     Flatten(),
-    Dense(128, activation='relu'),
-    Dense(10, activation='softmax')  # 10 classes
+    Dense(512, activation='relu'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(10, activation='softmax')
 ])
 
 # Compile the original model
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # Train the original model
-model.fit(x_train, y_train, epochs=10, batch_size=64, validation_split=0.2)
+history = model.fit(datagen.flow(x_train, y_train, batch_size=64),
+                    epochs=50, validation_data=(x_test, y_test), verbose=1)
 
 # Evaluate the original model
 test_loss, test_accuracy = model.evaluate(x_test, y_test)
 print(f"Acurácia no conjunto de teste: {test_accuracy * 100:.2f}%")
 
-#? UNCOMMENT TO TEST UPSCALING, BUT COMMENT THE LINES 48-51
-""" # Upsacle the images
-x_train_upscaled = Upscaling.ApplyUpscaling(x_train)
-x_test_upscaled = Upscaling.ApplyUpscaling(x_test) """
+model.save('original_model.keras')
 
-#! TESTS, UPSCALING TAKES TOO LONG, TESTING WITH ONLY 100 IMAGES
-x_train_upscaled = Upscaling.ApplyUpscaling(x_train[:100])
-x_test_upscaled = Upscaling.ApplyUpscaling(x_test[:100])
-y_train_upscaled = y_train[:100]
-y_test_upscaled = y_test[:100]
+epochs_range = range(1, len(history.history['accuracy']) + 1)
+
+Print.ShowTrainingResults(history, epochs_range)
+
+# Upsacle the images
+x_train_upscaled = Upscaling.ApplyUpscaling(x_train)
+x_test_upscaled = Upscaling.ApplyUpscaling(x_test)
+
+datagen_upscaled = ImageDataGenerator(
+    rotation_range=15,
+    horizontal_flip=True,
+    width_shift_range=0.1,
+    height_shift_range=0.1
+)
+datagen.fit(x_train_upscaled)
 
 # Update the input shape for the model
 input_shape = x_train_upscaled.shape[1:]
 
 # Create the model for upscaled images
 upscaled_model = Sequential([
-    Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
+    Input(shape=input_shape),
+    Conv2D(32, (3, 3), activation='relu'),
+    BatchNormalization(),
+    Conv2D(32, (3, 3), activation='relu'),
+    BatchNormalization(),
     MaxPooling2D((2, 2)),
+    Dropout(0.2),
+
     Conv2D(64, (3, 3), activation='relu'),
+    BatchNormalization(),
+    Conv2D(64, (3, 3), activation='relu'),
+    BatchNormalization(),
     MaxPooling2D((2, 2)),
+    Dropout(0.3),
+
     Flatten(),
-    Dense(128, activation='relu'),
-    Dense(10, activation='softmax')  # 10 classes
+    Dense(512, activation='relu'),
+    BatchNormalization(),
+    Dropout(0.5),
+    Dense(10, activation='softmax')
 ])
 
 # Compile the model for upscaled images
 upscaled_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-#? UNCOMMENT TO TEST UPSCALING, BUT COMMENT THE LINES 78-79
-""" # Train the model on the upscaled dataset
-upscaled_model.fit(x_train_upscaled, y_train, epochs=10, batch_size=64, validation_split=0.2)
+# Train the model on the upscaled dataset
+history = upscaled_model.fit(datagen_upscaled.flow(x_train_upscaled, y_train, batch_size=64),
+                     epochs=50, validation_data=(x_test_upscaled, y_test), verbose=1)
 
 # Evaluate the upscaled model
-test_loss, test_accuracy = upscaled_model.evaluate(x_test_upscaled, y_test) """
-
-#! TESTS, UPSCALING TAKES TOO LONG, TESTING WITH ONLY 100 IMAGES
-upscaled_model.fit(x_train_upscaled, y_train_upscaled, epochs=10, batch_size=64, validation_split=0.2)
-test_loss, test_accuracy = upscaled_model.evaluate(x_test_upscaled, y_test_upscaled)
+test_loss, test_accuracy = upscaled_model.evaluate(x_test_upscaled, y_test)
 print(f"Acurácia no conjunto de teste com upscaling: {test_accuracy * 100:.2f}%")
 
-# Select 5 random images from the test set
-original_first_img   = x_test[np.random.randint(0, x_test.shape[0])]
-original_second_img  = x_test[np.random.randint(0, x_test.shape[0])]
-original_third_img   = x_test[np.random.randint(0, x_test.shape[0])]
-original_fourth_img  = x_test[np.random.randint(0, x_test.shape[0])]
-original_fifth_img   = x_test[np.random.randint(0, x_test.shape[0])]
+upscaled_model.save('upscaled_model.keras')
 
-# Apply sharpening on the images
-first_img   = Sharpening.ApplySharpening(original_first_img)
-second_img  = Sharpening.ApplySharpening(original_second_img)
-third_img   = Sharpening.ApplySharpening(original_third_img)
-fourth_img  = Sharpening.ApplySharpening(original_fourth_img)
-fifth_img   = Sharpening.ApplySharpening(original_fifth_img)
+epochs_range = range(1, len(history.history['accuracy']) + 1)
+
+Print.ShowTrainingResults(history, epochs_range)
+
+# Select 5 random images from the test set
+first_random_number   = np.random.randint(0, x_test.shape[0])
+second_random_number  = np.random.randint(0, x_test.shape[0])
+third_random_number   = np.random.randint(0, x_test.shape[0])
+fourth_random_number  = np.random.randint(0, x_test.shape[0])
+fifth_random_number   = np.random.randint(0, x_test.shape[0])
+
+first_img   = x_test[first_random_number]
+second_img  = x_test[second_random_number]
+third_img   = x_test[third_random_number]
+fourth_img  = x_test[fourth_random_number]
+fifth_img   = x_test[fifth_random_number]
+
+estimated_first_img   = y_test[first_random_number]
+estimated_second_img  = y_test[second_random_number]
+estimated_third_img   = y_test[third_random_number]
+estimated_fourth_img  = y_test[fourth_random_number]
+estimated_fifth_img   = y_test[fifth_random_number]
 
 # Upscaling the images
 first_img_upscaled  = Upscaling.ApplyUpscaling([first_img])
@@ -118,43 +176,43 @@ fifth_img_upscaled_prediction_upscalled_model = upscaled_model.predict(fifth_img
 
 # Print the results without upscaling
 Print.PrintResults(
-    original_first_img,
     first_img,
     first_img_upscaled,
     first_img_original_prediction_original_model,
     first_img_upscaled_prediction_upscalled_model,
+    estimated_first_img,
     1)
 
 Print.PrintResults(
-    original_second_img,
     second_img,
     second_img_upscaled,
     second_img_original_prediction_original_model,
     second_img_upscaled_prediction_upscalled_model,
+    estimated_second_img,
     2)
 
 Print.PrintResults(
-    original_third_img,
     third_img,
     third_img_upscaled,
     third_img_original_prediction_original_model,
     third_img_upscaled_prediction_upscalled_model,
+    estimated_third_img,
     3)
 
 Print.PrintResults(
-    original_fourth_img,
     fourth_img,
     fourth_img_upscaled,
     fourth_img_original_prediction_original_model,
     fourth_img_upscaled_prediction_upscalled_model,
+    estimated_fourth_img,
     4)
 
 Print.PrintResults(
-    original_fifth_img,
     fifth_img,
     fifth_img_upscaled,
     fifth_img_original_prediction_original_model,
     fifth_img_upscaled_prediction_upscalled_model,
+    estimated_fifth_img,
     5)
 
 # Stop the time count
